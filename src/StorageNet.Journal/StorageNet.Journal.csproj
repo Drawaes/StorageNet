@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Pipelines" Version="0.1.0-e170812-2" />
+    <PackageReference Include="System.IO.Pipelines.Extensions" Version="0.1.0-e170812-2" />
+    <PackageReference Include="System.IO.Pipelines.File" Version="0.1.0-e170812-2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StorageNet.Abstractions\StorageNet.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

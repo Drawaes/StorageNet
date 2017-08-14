@@ -6,6 +6,9 @@ namespace StorageNet.Abstractions
 {
     public interface IStorageEngine
     {
+        Task Open(string file);
+        Task Close();
+
         IStorage<K,V> GetStorage<K,V>();
 
         ValueTask<Buffer<byte>> GetBuffer(int size);
