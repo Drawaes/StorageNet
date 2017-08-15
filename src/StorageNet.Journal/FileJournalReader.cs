@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -21,8 +20,11 @@ namespace StorageNet.Journal
         public unsafe FileJournalReader(string location)
         {
             _location = location;
-            _fileStream = new FileStream(location, FileMode.Open, FileAccess.Read);
-            _headerBuffer = new byte[sizeof(JournalEntryHeader)];
+            if (File.Exists(_location))
+            {
+                _fileStream = new FileStream(location, FileMode.Open, FileAccess.Read);
+                _headerBuffer = new byte[sizeof(JournalEntryHeader)];
+            }
         }
 
         private void Open() => _fileStream = new FileStream(_location, FileMode.Open, FileAccess.Read);
@@ -31,16 +33,20 @@ namespace StorageNet.Journal
 
         object IEnumerator.Current => Current;
 
-        public void Dispose() => _fileStream.Dispose();
+        public void Dispose() => _fileStream?.Dispose();
 
         public unsafe bool MoveNext()
         {
+            if (_fileStream == null)
+            {
+                return false;
+            }
             if (_currentEntry?.Header.EntryType == JournalEntryType.EndOfFile)
             {
                 return false;
             }
             var read = _fileStream.Read(_headerBuffer, 0, _headerBuffer.Length);
-            if(read == 0)
+            if (read == 0)
             {
                 _currentEntry = new JournalEntry()
                 {
@@ -100,7 +106,7 @@ namespace StorageNet.Journal
 
             return true;
         }
-                
+
         public void Reset()
         {
             Dispose();

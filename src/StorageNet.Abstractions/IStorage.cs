@@ -1,14 +1,14 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace StorageNet.Abstractions
 {
-    public interface IStorage<K,V>
+    public interface IStorage<V>
     {
-        ValueTask<K> Put(K key, V value);
-        ValueTask<V> Get(K key);
-        ValueTask<K> Delete(K key);
+        Task Put(string key, V value);
+        Task<V> Get(string key);
+        Task Delete(string key);
     }
 }

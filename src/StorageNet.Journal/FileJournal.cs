@@ -1,8 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -13,7 +13,7 @@ using StorageNet.Abstractions;
 
 namespace StorageNet.Journal
 {
-    public class FileJournal : IJournal
+    public class FileJournal : IJournal, IEnumerable<JournalEntry>
     {
         private string _directoryLocation;
         private TaskCompletionSource<bool> _currentTask = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -26,7 +26,7 @@ namespace StorageNet.Journal
         private byte[] _headerBuffer;
         private byte[] _crc = new byte[4];
         private GCHandle _pin;
-
+        
         public unsafe FileJournal(string directoryLocation)
         {
             _directoryLocation = directoryLocation;
@@ -38,18 +38,25 @@ namespace StorageNet.Journal
         {
             _file = new FileStream(_directoryLocation, FileMode.Create, FileAccess.Write);
             _writingThread = new Task(WritingLoop, TaskCreationOptions.LongRunning);
+            _writingThread.Start();
             return Task.CompletedTask;
         }
 
         private void WritingLoop()
         {
-            while(!_cancel.IsCancellationRequested)
+            while (!_cancel.IsCancellationRequested)
             {
                 _needsWriting.WaitOne();
-                var task = Interlocked.Exchange(ref _currentTask, new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously));
-                while(_waitingEntries.TryPeek(out (JournalEntry Entry, TaskCompletionSource<bool> Task) currentEntry) && currentEntry.Task == task)
+                TaskCompletionSource<bool> task;
+                lock (_currentTask)
                 {
-                    if(!_waitingEntries.TryDequeue(out currentEntry))
+                    task = _currentTask;
+                    _currentTask = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+
+                while (_waitingEntries.TryPeek(out (JournalEntry Entry, TaskCompletionSource<bool> Task) currentEntry) && currentEntry.Task == task)
+                {
+                    if (!_waitingEntries.TryDequeue(out currentEntry))
                     {
                         throw new InvalidOperationException();
                     }
@@ -62,6 +69,10 @@ namespace StorageNet.Journal
                 _file.Flush();
                 task.SetResult(true);
             }
+            _currentTask.TrySetException(new ObjectDisposedException("The journal has been shutdown so you cannot write to it"));
+            _file.Flush();
+            _file.Dispose();
+            _endEvent.Set();
         }
 
         public void Dispose()
@@ -69,10 +80,52 @@ namespace StorageNet.Journal
             _cancel.Cancel();
             _needsWriting.Set();
             _endEvent.WaitOne();
+            _pin.Free();
         }
 
-        public Task WriteJournalEntry(IEnumerable<JournalEntry> entries) => throw new NotImplementedException();
+        public Task WriteJournalEntry(JournalEntryType type, byte[] content, long transactionId)
+        {
+            //This has a race condition
+            //The task could be switched while we are adding the item to the queue
+            Task task;
+            lock (_currentTask)
+            {
+                task = _currentTask.Task;
+                var je = new JournalEntry()
+                {
+                    Content = content,
+                    Header = new JournalEntryHeader() { EntryType = type, Id = transactionId, Size = (uint)content.Length }
+                };
+                _waitingEntries.Enqueue((je, _currentTask));
+            }
+            _needsWriting.Set();
+            return task;
+        }
 
         public IJournalReader GetReader() => new FileJournalReader(_directoryLocation);
+
+        public Task WriteJournalEntries(IEnumerable<(JournalEntryType Type, byte[] Content, long TransactionId)> entries)
+        {
+            Task task;
+            lock (_currentTask)
+            {
+                task = _currentTask.Task;
+                foreach (var e in entries)
+                {
+                    var je = new JournalEntry()
+                    {
+                        Content = e.Content,
+                        Header = new JournalEntryHeader() { EntryType = e.Type, Id = e.TransactionId, Size = (uint)e.Content.Length }
+                    };
+                    _waitingEntries.Enqueue((je, _currentTask));
+                }
+            }
+            _needsWriting.Set();
+            return task;
+        }
+
+        public IEnumerator<JournalEntry> GetEnumerator() => GetReader();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }
