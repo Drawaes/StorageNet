@@ -27,7 +27,7 @@ namespace StorageNet.Journal
 
         private void Open() => _fileStream = new FileStream(_location, FileMode.Open, FileAccess.Read);
 
-        public JournalEntry Current => throw new NotImplementedException();
+        public JournalEntry Current => _currentEntry;
 
         object IEnumerator.Current => Current;
 
