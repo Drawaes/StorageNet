@@ -25,10 +25,7 @@ namespace StorageNet.Journal
             _headerBuffer = new byte[sizeof(JournalEntryHeader)];
         }
 
-        private void Open()
-        {
-            _fileStream = new FileStream(_location, FileMode.Open, FileAccess.Read);
-        }
+        private void Open() => _fileStream = new FileStream(_location, FileMode.Open, FileAccess.Read);
 
         public JournalEntry Current => throw new NotImplementedException();
 
@@ -42,22 +39,35 @@ namespace StorageNet.Journal
             {
                 return false;
             }
-            if (_fileStream.Read(_headerBuffer, 0, _headerBuffer.Length) != _headerBuffer.Length)
+            var read = _fileStream.Read(_headerBuffer, 0, _headerBuffer.Length);
+            if(read == 0)
             {
-                return false;
+                _currentEntry = new JournalEntry()
+                {
+                    Content = null,
+                    Header = new JournalEntryHeader()
+                    {
+                        EntryType = JournalEntryType.EndOfFile
+                    }
+                };
+                return true;
+            }
+            if (read != _headerBuffer.Length)
+            {
+                throw new InvalidDataException();
             }
             JournalEntryHeader header;
             fixed (void* ptr = _headerBuffer)
             {
                 header = Unsafe.Read<JournalEntryHeader>(ptr);
             }
-            var content = new byte[header.Size + 4];
+            var content = new byte[header.Size];
             var offset = 0;
             var count = content.Length;
 
             while (count > 0)
             {
-                var read = _fileStream.Read(content, offset, count);
+                read = _fileStream.Read(content, offset, count);
                 if (read == 0)
                 {
                     throw new InvalidOperationException();
@@ -66,10 +76,26 @@ namespace StorageNet.Journal
                 count -= read;
             }
 
+            var crc = new byte[4];
+            offset = 0;
+            count = 4;
+            while (count > 0)
+            {
+                read = _fileStream.Read(crc, offset, count);
+                if (read == 0)
+                {
+                    throw new InvalidOperationException();
+                }
+                offset += read;
+                count -= read;
+            }
+
+            //todo need to check crc
+
             _currentEntry = new JournalEntry()
             {
                 Header = header,
-                Content = ((Buffer<byte>)content).Slice(0, content.Length - 4)
+                Content = content
             };
 
             return true;

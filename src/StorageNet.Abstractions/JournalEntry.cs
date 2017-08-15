@@ -9,6 +9,6 @@ namespace StorageNet.Abstractions
     public class JournalEntry
     {
         public JournalEntryHeader Header { get; set; }
-        public Buffer<byte> Content { get; set; }
+        public byte[] Content { get; set; }
     }
 }
